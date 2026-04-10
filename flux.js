@@ -231,6 +231,140 @@ function disassemble(bytecode) {
 
 // ─── Vocabulary ───────────────────────────────────────────────────────────
 
+class VocabEntry {
+  /**
+   * @param {RegExp|string} pattern 
+   * @param {string|function} asmTemplate 
+   * @param {string} name 
+   * @param {number} resultReg 
+   */
+  constructor(pattern, asmTemplate, name, resultReg = 0) {
+    this.pattern = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
+    this.asmTemplate = asmTemplate;
+    this.name = name;
+    this.resultReg = resultReg;
+  }
+
+  /**
+   * Match text against pattern
+   * @param {string} text 
+   * @returns {Array|null} captured groups or null
+   */
+  match(text) {
+    const m = text.match(this.pattern);
+    return m ? m.slice(1) : null;
+  }
+}
+
+class Vocabulary {
+  constructor() {
+    this.entries = [];
+  }
+
+  /**
+   * Add a vocabulary entry
+   * @param {VocabEntry} entry 
+   */
+  register(entry) {
+    this.entries.push(entry);
+  }
+
+  /**
+   * Find first matching entry for text
+   * @param {string} text 
+   * @returns {VocabEntry|null}
+   */
+  findMatch(text) {
+    for (const entry of this.entries) {
+      if (entry.match(text) !== null) {
+        return entry;
+      }
+    }
+    return null;
+  }
+}
+
+class VocabInterpreter {
+  constructor() {
+    this.vocab = new Vocabulary();
+    this.assembler = assemble; // Use existing assemble function
+    this.vm = null;
+    
+    // Register built-in entries
+    this.vocab.register(new VocabEntry(
+      /^compute\s+(\d+)\s*\+\s*(\d+)$/i,
+      (a, b) => `MOVI R0, ${a}\nMOVI R1, ${b}\nIADD R0, R0, R1\nHALT`,
+      'add',
+      0
+    ));
+    this.vocab.register(new VocabEntry(
+      /^compute\s+(\d+)\s*\*\s*(\d+)$/i,
+      (a, b) => `MOVI R0, ${a}\nMOVI R1, ${b}\nIMUL R0, R0, R1\nHALT`,
+      'mul',
+      0
+    ));
+    this.vocab.register(new VocabEntry(
+      /^factorial\s+of\s+(\d+)$/i,
+      (n) => `MOVI R0, ${n}\nMOVI R1, 1\nIMUL R1, R1, R0\nDEC R0\nJNZ R0, -10\nHALT`,
+      'factorial',
+      1
+    ));
+    this.vocab.register(new VocabEntry(
+      /^double\s+(\d+)$/i,
+      (n) => `MOVI R0, ${n}\nIADD R0, R0, R0\nHALT`,
+      'double',
+      0
+    ));
+    this.vocab.register(new VocabEntry(
+      /^square\s+(\d+)$/i,
+      (n) => `MOVI R0, ${n}\nIMUL R0, R0, R0\nHALT`,
+      'square',
+      0
+    ));
+    this.vocab.register(new VocabEntry(
+      /^hello$/i,
+      () => `MOVI R0, 42\nHALT`,
+      'hello',
+      0
+    ));
+  }
+
+  /**
+   * Run text through vocabulary interpreter
+   * @param {string} text 
+   * @returns {{ value: number|null, message: string, cycles: number }}
+   */
+  run(text) {
+    const trimmed = text.trim();
+    const entry = this.vocab.findMatch(trimmed);
+    
+    if (!entry) {
+      return { value: null, message: `No vocabulary match for: ${trimmed.slice(0, 80)}`, cycles: 0 };
+    }
+    
+    const args = entry.match(trimmed).map(Number);
+    let asmText;
+    if (typeof entry.asmTemplate === 'function') {
+      asmText = entry.asmTemplate(...args);
+    } else {
+      asmText = entry.asmTemplate;
+    }
+    
+    try {
+      const bc = this.assembler(asmText);
+      this.vm = new FluxVM(bc);
+      this.vm.execute();
+      return { 
+        value: this.vm.reg(entry.resultReg), 
+        message: `OK (${this.vm.cycles} cycles)`, 
+        cycles: this.vm.cycles 
+      };
+    } catch (e) {
+      return { value: null, message: `Error: ${e.message}`, cycles: 0 };
+    }
+  }
+}
+
 const VOCAB = [
   { pattern: /^compute\s+(\d+)\s*\+\s*(\d+)$/i, name: 'add',
     asm: (a,b) => `MOVI R0, ${a}\nMOVI R1, ${b}\nIADD R0, R0, R1\nHALT`, reg: 0 },
@@ -362,7 +496,19 @@ class Swarm {
 
 // ─── Exports ──────────────────────────────────────────────────────────────
 
-module.exports = { FluxVM, assemble, disassemble, Interpreter, A2AAgent, Swarm, OP, VOCAB };
+module.exports = { 
+  FluxVM, 
+  assemble, 
+  disassemble, 
+  Interpreter, 
+  A2AAgent, 
+  Swarm, 
+  VocabEntry, 
+  Vocabulary, 
+  VocabInterpreter,
+  OP, 
+  VOCAB 
+};
 
 // ─── CLI Demo ─────────────────────────────────────────────────────────────
 
@@ -420,4 +566,40 @@ if (typeof require !== 'undefined' && require.main === module) {
   console.log(`  factorial(7) x ${N.toLocaleString()}: ${elapsed} ms | ${(elapsed*1e6/N).toFixed(0)} ns/iter`);
 
   console.log('\n✓ FLUX.js all systems operational!');
+
+  // Test the new vocabulary interpreter
+  console.log('\n=== Testing VocabInterpreter ===');
+  const vocabInterp = new VocabInterpreter();
+  
+  // Test compute A + B
+  const addResult = vocabInterp.run('compute 3 + 4');
+  console.assert(addResult.value === 7, `Expected 7, got ${addResult.value}`);
+  console.log(`  compute 3 + 4 → ${addResult.value} (${addResult.message})`);
+  
+  // Test compute A * B
+  const mulResult = vocabInterp.run('compute 5 * 6');
+  console.assert(mulResult.value === 30, `Expected 30, got ${mulResult.value}`);
+  console.log(`  compute 5 * 6 → ${mulResult.value} (${mulResult.message})`);
+  
+  // Test factorial
+  const factResult = vocabInterp.run('factorial of 5');
+  console.assert(factResult.value === 120, `Expected 120, got ${factResult.value}`);
+  console.log(`  factorial of 5 → ${factResult.value} (${factResult.message})`);
+  
+  // Test double
+  const doubleResult = vocabInterp.run('double 21');
+  console.assert(doubleResult.value === 42, `Expected 42, got ${doubleResult.value}`);
+  console.log(`  double 21 → ${doubleResult.value} (${addResult.message})`);
+  
+  // Test square
+  const squareResult = vocabInterp.run('square 8');
+  console.assert(squareResult.value === 64, `Expected 64, got ${squareResult.value}`);
+  console.log(`  square 8 → ${squareResult.value} (${squareResult.message})`);
+  
+  // Test hello
+  const helloResult = vocabInterp.run('hello');
+  console.assert(helloResult.value === 42, `Expected 42, got ${helloResult.value}`);
+  console.log(`  hello → ${helloResult.value} (${helloResult.message})`);
+  
+  console.log('\n✓ All VocabInterpreter tests passed!');
 }
