@@ -90,7 +90,7 @@ class FluxVM {
           case 0x11: this.gp[this._u8()]=this.stack.pop(); break;
           case 0x06: { const d=this._u8(),off=this._i16(); if(this.gp[d]!==0) this.pc+=off; break; }
           case 0x2E: { const d=this._u8(),off=this._i16(); if(this.gp[d]===0) this.pc+=off; break; }
-          case 0x07: this.pc+=this._i16(); break;
+          case 0x07: { const off=this._i16(); this.pc+=off; break; }
           case 0x2D: { const a=this._u8(),b=this._u8();
             this.gp[13]=this.gp[a]>this.gp[b]?1:this.gp[a]<this.gp[b]?-1:0; break; }
           default: throw new Error(`Unknown opcode: 0x${op.toString(16).padStart(2,'0')}`);
@@ -176,11 +176,11 @@ function assemble(text) {
       bc.push(v & 0xFF, (v >> 8) & 0xFF);
     } else if (['JNZ','JZ'].includes(mn)) {
       bc.push(op, parseInt(parts[1].slice(1)));
-      const v = resolveValue(parts[2], bc.length + 1);
+      const v = resolveValue(parts[2], bc.length + 2);
       bc.push(v & 0xFF, (v >> 8) & 0xFF);
     } else if (mn === 'JMP') {
       bc.push(op);
-      const v = resolveValue(parts[1], bc.length);
+      const v = resolveValue(parts[1], bc.length + 2);
       bc.push(v & 0xFF, (v >> 8) & 0xFF);
     }
   }
