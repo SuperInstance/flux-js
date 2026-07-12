@@ -60,6 +60,12 @@ class FluxVM {
   /** Read unsigned byte */
   _u8() { return this.bc[this.pc++]; }
 
+  /** Update condition flags based on an arithmetic result (matches Python/Rust) */
+  _setFlags(result) {
+    this._flagZero = (result === 0);
+    this._flagSign = (result < 0);
+  }
+
   /** Read signed 16-bit */
   _i16() {
     const lo = this.bc[this.pc++];
@@ -86,17 +92,17 @@ class FluxVM {
           case 0x01: { const d=this._u8(),s=this._u8(); this.gp[d]=this.gp[s]; break; } // MOV
           case 0x2B: { const d=this._u8(); this.gp[d]=this._i16(); break; } // MOVI
           // 3-operand arithmetic: [op][rd][rs1][rs2]
-          case 0x08: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=(this.gp[a]+this.gp[b])|0; break; } // IADD
-          case 0x09: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=(this.gp[a]-this.gp[b])|0; break; } // ISUB
-          case 0x0A: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=(this.gp[a]*this.gp[b])|0; break; } // IMUL
+          case 0x08: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=(this.gp[a]+this.gp[b])|0; this.gp[d]=r; this._setFlags(r); break; } // IADD
+          case 0x09: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=(this.gp[a]-this.gp[b])|0; this.gp[d]=r; this._setFlags(r); break; } // ISUB
+          case 0x0A: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=(this.gp[a]*this.gp[b])|0; this.gp[d]=r; this._setFlags(r); break; } // IMUL
           case 0x0B: { const d=this._u8(),a=this._u8(),b=this._u8();
             if(this.gp[b]===0) throw new Error('Division by zero');
-            this.gp[d]=(this.gp[a]/this.gp[b])|0; break; } // IDIV
+            this.gp[d]=(this.gp[a]/this.gp[b])|0; this._setFlags(this.gp[d]); break; } // IDIV
           case 0x0C: { const d=this._u8(),a=this._u8(),b=this._u8();
             if(this.gp[b]===0) throw new Error('Modulo by zero');
-            this.gp[d]=(this.gp[a]%this.gp[b])|0; break; } // IMOD
-          case 0x0E: { const r=this._u8(); this.gp[r]=(this.gp[r]+1)|0; break; } // INC
-          case 0x0F: { const r=this._u8(); this.gp[r]=(this.gp[r]-1)|0; break; } // DEC
+            this.gp[d]=(this.gp[a]%this.gp[b])|0; this._setFlags(this.gp[d]); break; } // IMOD
+          case 0x0E: { const r=this._u8(); const v=(this.gp[r]+1)|0; this.gp[r]=v; this._setFlags(v); break; } // INC
+          case 0x0F: { const r=this._u8(); const v=(this.gp[r]-1)|0; this.gp[r]=v; this._setFlags(v); break; } // DEC
           // FIX: PUSH/POP now use 0x20/0x21 (was 0x10/0x11)
           case 0x20: this.stack.push(this.gp[this._u8()]); break; // PUSH
           case 0x21: this.gp[this._u8()]=this.stack.pop()||0; break; // POP
@@ -112,13 +118,19 @@ class FluxVM {
             break; } // CMP
           case 0x2E: { const _r=this._u8(),off=this._i16(); if(this._flagZero) this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JE
           case 0x2F: { const _r=this._u8(),off=this._i16(); if(!this._flagZero) this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JNE
-          case 0x10: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]&this.gp[b]; break; } // IAND
-          case 0x11: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]|this.gp[b]; break; } // IOR
-          case 0x12: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]^this.gp[b]; break; } // IXOR
-          case 0x13: { const d=this._u8(),s=this._u8(); this.gp[d]=~this.gp[s]; break; } // INOT
-          case 0x14: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]<<(this.gp[b]&0x1f); break; } // ISHL
-          case 0x15: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]>>(this.gp[b]&0x1f); break; } // ISHR
+          case 0x10: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=this.gp[a]&this.gp[b]; this.gp[d]=r; this._setFlags(r); break; } // IAND
+          case 0x11: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=this.gp[a]|this.gp[b]; this.gp[d]=r; this._setFlags(r); break; } // IOR
+          case 0x12: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=this.gp[a]^this.gp[b]; this.gp[d]=r; this._setFlags(r); break; } // IXOR
+          case 0x13: { const d=this._u8(),s=this._u8(); const r=~this.gp[s]; this.gp[d]=r; this._setFlags(r); break; } // INOT
+          case 0x14: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=this.gp[a]<<(this.gp[b]&0x1f); this.gp[d]=r; this._setFlags(r); break; } // ISHL
+          case 0x15: { const d=this._u8(),a=this._u8(),b=this._u8(); const r=this.gp[a]>>(this.gp[b]&0x1f); this.gp[d]=r; this._setFlags(r); break; } // ISHR
           case 0x81: break; // YIELD
+          // A2A stubs (Format G: [op][len:u16][data:len]) — experimental, consistent with Python/Rust
+          case 0x60: case 0x61: case 0x62: case 0x66: {
+            const _len = this._u8() | (this._u8() << 8);
+            this.pc += _len; // skip variable data
+            break;
+          }
           default: throw new Error(`Unknown opcode: 0x${op.toString(16).padStart(2,'0')}`);
         }
       }
