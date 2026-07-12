@@ -1,14 +1,26 @@
 # FLUX.js — JavaScript Bytecode VM
 
-Self-contained FLUX runtime for Node.js and browsers. ~400ns/iter via V8 JIT.
+> **FLUX — Fluid Language Universal eXecution**
+> Self-contained FLUX runtime for Node.js and browsers. ~400ns/iter via V8 JIT.
 
 ![FLUX Logo](flux-logo.jpg)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![npm](https://img.shields.io/npm/v/flux-js.svg)](https://www.npmjs.com/package/flux-js)
+
+---
+
+## Install
+
+```bash
+npm install flux-js
+```
 
 ## Features
 
 - **VM** — 16 registers, all opcodes, cycle-limited execution
-- **Assembler** — text→bytecode with labels and comments
-- **Disassembler** — bytecode→human-readable listing
+- **Assembler** — text → bytecode with labels and comments
+- **Disassembler** — bytecode → human-readable listing
 - **Vocabulary** — 10 natural language patterns
 - **A2A Agents** — multi-agent coordination with messaging
 - **Swarm** — vote and consensus across agents
@@ -17,7 +29,7 @@ Self-contained FLUX runtime for Node.js and browsers. ~400ns/iter via V8 JIT.
 ## Quick Start
 
 ```javascript
-const { FluxVM, assemble } = require('./flux.js');
+const { FluxVM, assemble } = require('flux-js');
 
 const bc = assemble(`
     MOVI R0, 7
@@ -35,7 +47,7 @@ console.log(vm.reg(1)); // 5040
 ## Natural Language
 
 ```javascript
-const { Interpreter } = require('./flux.js');
+const { Interpreter } = require('flux-js');
 const interp = new Interpreter();
 
 interp.run('factorial of 7');     // { value: 5040, cycles: 24 }
@@ -65,7 +77,7 @@ HALT                # Stop
 ## A2A Swarm
 
 ```javascript
-const { A2AAgent, Swarm, assemble } = require('./flux.js');
+const { A2AAgent, Swarm, assemble } = require('flux-js');
 
 const bc = assemble('MOVI R0, 42\nHALT');
 const swarm = new Swarm();
@@ -92,7 +104,7 @@ console.log(swarm.consensus()); // 42
 ## API
 
 ```javascript
-const { FluxVM, assemble, disassemble, Interpreter, A2AAgent, Swarm } = require('./flux.js');
+const { FluxVM, assemble, disassemble, Interpreter, A2AAgent, Swarm } = require('flux-js');
 ```
 
 | Export | Description |
@@ -104,14 +116,42 @@ const { FluxVM, assemble, disassemble, Interpreter, A2AAgent, Swarm } = require(
 | `A2AAgent` | Single agent with inbox |
 | `Swarm` | Multi-agent coordinator |
 
-## Part of the FLUX Ecosystem
+---
 
-- **flux-runtime** — Full Python runtime
-- **flux-core** — Rust implementation
-- **flux-runtime-c** — C implementation
-- **flux-zig** — Zig (fastest VM: 210ns)
-- **flux-js** — This repo (V8 JIT: ~400ns)
-- **flux-swarm** — Go swarm coordinator
-- **flux-py** — Clean Python, single file
+## 📦 Related Packages
 
-Same bytecode, different shells. 🦀
+FLUX is implemented across multiple languages — same bytecode, different shells:
+
+| Package | Language | Registry | Install |
+|---------|----------|----------|---------|
+| **[flux-vm](https://pypi.org/project/flux-vm/)** | Python | PyPI | `pip install flux-vm` |
+| **[fluxvm](https://crates.io/crates/fluxvm)** | Rust | crates.io | `cargo add fluxvm` |
+| **[flux-js](https://www.npmjs.com/package/flux-js)** | JavaScript | npm | `npm install flux-js` |
+| **[flux-compiler](https://github.com/SuperInstance/flux-compiler)** | Rust/Python | GitHub | `cargo install flux-compiler` |
+
+Additional implementations: [C](https://github.com/SuperInstance/flux-runtime-c) · [Zig](https://github.com/SuperInstance/flux-zig) · [Go](https://github.com/SuperInstance/flux-swarm) · [Java](https://github.com/SuperInstance/flux-java) · [WASM](https://github.com/SuperInstance/flux-wasm) · [CUDA](https://github.com/SuperInstance/flux-cuda)
+
+## 🌐 Ecosystem
+
+FLUX is part of a broader research ecosystem exploring agent-first computation:
+
+| Project | Description |
+|---------|-------------|
+| [PLATO Engine Block](https://github.com/SuperInstance/plato-engine-block) | Constraint engine powering FLUX verification |
+| [Constraint-Theory-Core](https://github.com/SuperInstance/Constraint-Theory) | Mathematical foundations for constraint-based computation |
+| [AI-Writings](https://github.com/SuperInstance/AI-Writings) | Philosophy, essays, and design rationale behind FLUX |
+| [Captain's Log](https://github.com/SuperInstance/captains-log) | Oracle1 growth diary and agent dojo curriculum |
+| [Iron-to-Iron](https://github.com/SuperInstance/iron-to-iron) | I2I protocol — agents communicate through git commits |
+| [flux-research](https://github.com/SuperInstance/flux-research) | 40K words: compiler taxonomy, ISA v2, agent-first design |
+
+📖 **[Full package index →](https://github.com/SuperInstance/flux/blob/main/PACKAGES.md)**
+
+---
+
+## License
+
+MIT
+
+---
+
+*Same bytecode, different shells.* 🦀
