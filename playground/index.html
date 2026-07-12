@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLUX Playground — Bytecode VM IDE</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<style>
+:root{--bg:#0d1117;--bg-panel:#161b22;--bg-input:#0d1117;--border:#30363d;--text:#e6edf3;--dim:#8b949e;--accent:#58a6ff;--green:#3fb950;--orange:#f0883e;--red:#f85149}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',Consolas,monospace;background:var(--bg);color:var(--text);font-size:13px;line-height:1.5}
+header{display:flex;align-items:center;gap:16px;padding:0 20px;height:52px;background:var(--bg-panel);border-bottom:1px solid var(--border);flex-shrink:0}
+header h1{font-size:16px;font-weight:700}
+header h1 .f{color:var(--accent)}
+.badge{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(88,166,255,.12);color:var(--accent);border:1px solid rgba(88,166,255,.25)}
+.spacer{flex:1}
+header a{color:var(--dim);text-decoration:none;font-size:12px}
+header a:hover{color:var(--accent)}
+.toolbar{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--bg-panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border:1px solid var(--border);border-radius:6px;background:var(--bg-panel);color:var(--text);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--accent);background:rgba(88,166,255,.08)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-run{border-color:rgba(63,185,80,.3)}.btn-run:hover{background:rgba(63,185,80,.1);border-color:var(--green);color:var(--green)}
+.btn-step{border-color:rgba(240,136,62,.3)}.btn-step:hover{background:rgba(240,136,62,.1);border-color:var(--orange);color:var(--orange)}
+.btn-reset{border-color:rgba(248,81,73,.3)}.btn-reset:hover{background:rgba(248,81,73,.1);border-color:var(--red);color:var(--red)}
+.sep{width:1px;height:22px;background:var(--border);margin:0 4px}
+.info{font-size:11px;color:var(--dim)}
+main{display:flex;height:calc(100vh - 52px - 49px);overflow:hidden}
+.pane-left{flex:1;display:flex;flex-direction:column;min-width:0}
+.pane-right{flex:1;display:flex;flex-direction:column;min-width:0;border-left:1px solid var(--border)}
+.editor-header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg-panel);border-bottom:1px solid var(--border);font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);transition:background .2s}
+.dot.dirty{background:var(--orange)}.dot.error{background:var(--red)}
+.editor-wrap{flex:1;display:flex;overflow:hidden;position:relative}
+.line-nums{padding:12px 8px 12px 16px;text-align:right;background:var(--bg-panel);color:var(--dim);font-size:13px;line-height:1.5;user-select:none;border-right:1px solid var(--border);min-width:48px;overflow:hidden}
+#editor{flex:1;padding:12px 16px;background:var(--bg-input);color:var(--text);border:none;outline:none;resize:none;font-family:inherit;font-size:13px;line-height:1.5;tab-size:2;white-space:pre;overflow:auto}
+.tabs{display:flex;background:var(--bg-panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{padding:8px 16px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{flex:1;overflow:auto;padding:12px}
+.tab-pane{display:none}.tab-pane.active{display:block}
+.reg-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.reg-cell{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;font-size:12px;transition:all .2s}
+.reg-cell .rn{color:var(--dim);font-weight:600}.reg-cell .rv{font-weight:700;font-variant-numeric:tabular-nums}
+.reg-cell.nz{border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.04)}.reg-cell.nz .rv{color:var(--green)}
+.reg-cell.chg{border-color:var(--orange);background:rgba(240,136,62,.08);animation:flash .3s ease}
+@keyframes flash{0%{background:rgba(240,136,62,.3)}100%{background:rgba(240,136,62,.08)}}
+.status-bar{display:flex;align-items:center;gap:20px;padding:8px 16px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:12px}
+.stat{display:flex;align-items:center;gap:6px}.stat .sl{color:var(--dim)}.stat .sv{font-weight:700;font-variant-numeric:tabular-nums}
+.data-row{display:flex;align-items:center;gap:12px;padding:4px 8px;border-bottom:1px solid rgba(48,54,61,.5)}
+.data-row .addr{color:var(--dim);min-width:60px}.data-row .val{color:var(--green);font-weight:600}
+.stack-empty{color:var(--dim);font-style:italic;padding:8px}
+#console{font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all}
+.cl{padding:2px 0}.cl-info{color:var(--dim)}.cl-ok{color:var(--green)}.cl-err{color:var(--red)}.cl-out{color:var(--text)}
+.disasm-line{display:flex;gap:12px;padding:2px 8px;border-radius:3px;border-left:2px solid transparent}
+.disasm-line .pa{color:var(--dim);min-width:50px}.disasm-line .pi{color:var(--text)}
+.disasm-line.cur{background:rgba(88,166,255,.12);border-left-color:var(--accent)}
+.disasm-line.cur .pa{color:var(--accent)}
+.examples-bar{display:flex;gap:6px;padding:6px 12px;background:var(--bg-panel);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.ex-btn{padding:4px 10px;font-size:11px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--dim);cursor:pointer;white-space:nowrap;font-family:inherit;transition:all .15s}
+.ex-btn:hover{color:var(--accent);border-color:var(--accent)}
+.ex-btn.active{color:var(--accent);background:rgba(88,166,255,.08);border-color:rgba(88,166,255,.3)}
+input[type=range]{accent-color:var(--accent)}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}::-webkit-scrollbar-thumb:hover{background:#444c56}
+@media(max-width:900px){main{flex-direction:column}.pane-right{border-left:none;border-top:1px solid var(--border)}.reg-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ <span class="f">FLUX</span> Playground</h1>
+  <span class="badge">Bytecode VM</span>
+  <span class="spacer"></span>
+  <a href="https://github.com/SuperInstance/flux-js" target="_blank">GitHub ↗</a>
+  <a href="https://www.npmjs.com/package/flux-js" target="_blank">npm ↗</a>
+</header>
+<div class="toolbar">
+  <button class="btn btn-run" id="btnRun">▶ Run</button>
+  <button class="btn btn-step" id="btnStep">⇥ Step</button>
+  <button class="btn btn-reset" id="btnReset">↺ Reset</button>
+  <div class="sep"></div>
+  <span class="info">Delay: <strong id="delayLabel">0ms</strong></span>
+  <input type="range" id="speedSlider" min="0" max="500" value="50" step="10" style="width:120px">
+  <div class="sep"></div>
+  <span class="info" id="statusInfo">Ready</span>
+</div>
+<main>
+  <div class="pane-left">
+    <div class="examples-bar" id="examplesBar"></div>
+    <div class="editor-header"><span class="dot" id="editorDot"></span><span id="editorLabel">hello.flx</span></div>
+    <div class="editor-wrap">
+      <div class="line-nums" id="lineNums">1</div>
+      <textarea id="editor" spellcheck="false" autocomplete="off"></textarea>
+    </div>
+  </div>
+  <div class="pane-right">
+    <div class="tabs">
+      <div class="tab active" data-tab="registers">Registers</div>
+      <div class="tab" data-tab="disasm">Disassembly</div>
+      <div class="tab" data-tab="stack">Stack</div>
+      <div class="tab" data-tab="console">Console</div>
+    </div>
+    <div class="tab-content">
+      <div class="tab-pane active" id="pane-registers">
+        <div class="status-bar">
+          <div class="stat"><span class="sl">PC</span><span class="sv" id="statPC">0</span></div>
+          <div class="stat"><span class="sl">Cycles</span><span class="sv" id="statCycles">0</span></div>
+          <div class="stat"><span class="sl">State</span><span class="sv" id="statState">idle</span></div>
+          <div class="stat"><span class="sl">Flags</span><span class="sv" id="statFlags">Z=0 S=0</span></div>
+        </div>
+        <div class="reg-grid" id="regGrid"></div>
+      </div>
+      <div class="tab-pane" id="pane-disasm"><div id="disasmView"></div></div>
+      <div class="tab-pane" id="pane-stack"><div id="stackView"></div></div>
+      <div class="tab-pane" id="pane-console"><div id="console"></div></div>
+    </div>
+  </div>
+</main>
+<script>
+// ═══ FLUX.js VM (browser-adapted) ═══
+const OP={NOP:0x00,MOV:0x01,LOAD:0x02,STORE:0x03,JMP:0x04,JZ:0x05,JNZ:0x06,CALL:0x07,IADD:0x08,ISUB:0x09,IMUL:0x0A,IDIV:0x0B,IMOD:0x0C,INEG:0x0D,INC:0x0E,DEC:0x0F,IAND:0x10,IOR:0x11,IXOR:0x12,INOT:0x13,ISHL:0x14,ISHR:0x15,PUSH:0x20,POP:0x21,DUP:0x22,RET:0x28,MOVI:0x2B,CMP:0x2D,JE:0x2E,JNE:0x2F,FADD:0x40,FSUB:0x41,FMUL:0x42,FDIV:0x43,TELL:0x60,ASK:0x61,DELEGATE:0x62,BROADCAST:0x66,HALT:0x80,YIELD:0x81};
+const MNEMONIC=Object.fromEntries(Object.entries(OP).map(([k,v])=>[v,k]));
+
+class FluxVM{
+  constructor(bytecode,maxCycles=1e7){
+    this.gp=new Int32Array(16);this.pc=0;this.halted=false;this.cycles=0;
+    this.stack=[];this.bc=bytecode instanceof Uint8Array?bytecode:new Uint8Array(bytecode);
+    this.maxCycles=maxCycles;this.error=null;this._flagZero=false;this._flagSign=false;
+  }
+  reg(idx){return this.gp[idx]||0}
+  _u8(){return this.bc[this.pc++]}
+  _i16(){const lo=this.bc[this.pc++],hi=this.bc[this.pc++],v=lo|(hi<<8);return v>=32768?v-65536:v}
+  step(){
+    if(this.halted||this.pc>=this.bc.length||this.cycles>=this.maxCycles)return false;
+    const op=this._u8();this.cycles++;
+    switch(op){
+      case 0x80:this.halted=true;break;
+      case 0x00:break;
+      case 0x01:{const d=this._u8(),s=this._u8();this.gp[d]=this.gp[s];break}
+      case 0x2B:{const d=this._u8();this.gp[d]=this._i16();break}
+      case 0x08:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=(this.gp[a]+this.gp[b])|0;break}
+      case 0x09:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=(this.gp[a]-this.gp[b])|0;break}
+      case 0x0A:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=(this.gp[a]*this.gp[b])|0;break}
+      case 0x0B:{const d=this._u8(),a=this._u8(),b=this._u8();if(this.gp[b]===0)throw new Error('Division by zero');this.gp[d]=(this.gp[a]/this.gp[b])|0;break}
+      case 0x0C:{const d=this._u8(),a=this._u8(),b=this._u8();if(this.gp[b]===0)throw new Error('Modulo by zero');this.gp[d]=(this.gp[a]%this.gp[b])|0;break}
+      case 0x0D:{const d=this._u8(),s=this._u8();this.gp[d]=-this.gp[s];break}
+      case 0x0E:{const r=this._u8();this.gp[r]=(this.gp[r]+1)|0;break}
+      case 0x0F:{const r=this._u8();this.gp[r]=(this.gp[r]-1)|0;break}
+      case 0x20:this.stack.push(this.gp[this._u8()]);break;
+      case 0x21:this.gp[this._u8()]=this.stack.pop()||0;break;
+      case 0x22:{if(this.stack.length>0)this.stack.push(this.stack[this.stack.length-1]);break}
+      case 0x04:{const _r=this._u8(),off=this._i16();this.pc=(this.pc+off)&0xFFFFFFFF;break}
+      case 0x05:{const r=this._u8(),off=this._i16();if(this.gp[r]===0)this.pc=(this.pc+off)&0xFFFFFFFF;break}
+      case 0x06:{const r=this._u8(),off=this._i16();if(this.gp[r]!==0)this.pc=(this.pc+off)&0xFFFFFFFF;break}
+      case 0x07:{const _r=this._u8(),off=this._i16();this.stack.push(this.pc);this.pc=(this.pc+off)&0xFFFFFFFF;break}
+      case 0x28:{const _r=this._u8(),_p=this._u8();if(this.stack.length>0)this.pc=this.stack.pop();break}
+      case 0x2D:{const a=this._u8(),b=this._u8();this._flagZero=this.gp[a]===this.gp[b];this._flagSign=this.gp[a]<this.gp[b];break}
+      case 0x2E:{const _r=this._u8(),off=this._i16();if(this._flagZero)this.pc=(this.pc+off)&0xFFFFFFFF;break}
+      case 0x2F:{const _r=this._u8(),off=this._i16();if(!this._flagZero)this.pc=(this.pc+off)&0xFFFFFFFF;break}
+      case 0x10:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=this.gp[a]&this.gp[b];break}
+      case 0x11:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=this.gp[a]|this.gp[b];break}
+      case 0x12:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=this.gp[a]^this.gp[b];break}
+      case 0x13:{const d=this._u8(),s=this._u8();this.gp[d]=~this.gp[s];break}
+      case 0x14:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=this.gp[a]<<(this.gp[b]&0x1f);break}
+      case 0x15:{const d=this._u8(),a=this._u8(),b=this._u8();this.gp[d]=this.gp[a]>>(this.gp[b]&0x1f);break}
+      case 0x81:break;
+      default:throw new Error('Unknown opcode: 0x'+op.toString(16).padStart(2,'0'));
+    }
+    return !this.halted&&this.pc<this.bc.length&&this.cycles<this.maxCycles;
+  }
+  execute(){this.halted=false;this.cycles=0;this.error=null;try{while(!this.halted&&this.pc<this.bc.length&&this.cycles<this.maxCycles)this.step()}catch(e){this.error=e.message}return this}
+}
+
+function assemble(text){
+  const labels={};const instructions=[];let pc=0;
+  for(const raw of text.split('\n')){
+    let line=raw.trim();
+    if(!line||line.startsWith('//')||line.startsWith(';'))continue;
+    if(line.includes(':')){const[lp,...rest]=line.split(':');labels[lp.trim()]=pc;line=rest.join(':').trim();if(!line)continue}
+    const parts=line.replace(/,/g,' ').split(/\s+/);const mn=parts[0].toUpperCase();
+    instructions.push({parts,pc});
+    if(mn in OP){
+      if(['HALT','NOP','DUP','YIELD'].includes(mn))pc+=1;
+      else if(['INC','DEC','PUSH','POP','INEG','INOT'].includes(mn))pc+=2;
+      else if(['MOV','LOAD','STORE','CMP'].includes(mn))pc+=3;
+      else if(['IADD','ISUB','IMUL','IDIV','IMOD','IAND','IOR','IXOR','ISHL','ISHR'].includes(mn))pc+=4;
+      else if(['MOVI','JMP','JZ','JNZ','CALL','JE','JNE'].includes(mn))pc+=4;
+      else if(mn==='RET')pc+=3;
+    }
+  }
+  const bc=[];const resolveValue=(token,curPc)=>{token=token.trim();const n=parseInt(token);if(!isNaN(n))return n;if(token in labels)return labels[token]-curPc;throw new Error('Cannot resolve: '+token)};
+  for(const{parts,pc:ipc}of instructions){
+    const mn=parts[0].toUpperCase();if(!(mn in OP))continue;const op=OP[mn];
+    if(['HALT','NOP','DUP','YIELD'].includes(mn)){bc.push(op)}
+    else if(['INC','DEC','PUSH','POP','INEG','INOT'].includes(mn)){bc.push(op,parseInt(parts[1].slice(1)))}
+    else if(['MOV','LOAD','STORE','CMP'].includes(mn)){bc.push(op,parseInt(parts[1].slice(1)),parseInt(parts[2].slice(1)))}
+    else if(['IADD','ISUB','IMUL','IDIV','IMOD','IAND','IOR','IXOR','ISHL','ISHR'].includes(mn)){bc.push(op,parseInt(parts[1].slice(1)),parseInt(parts[2].slice(1)),parts.length>3?parseInt(parts[3].slice(1)):parseInt(parts[1].slice(1)))}
+    else if(mn==='MOVI'){bc.push(op,parseInt(parts[1].slice(1)));const v=resolveValue(parts[2],bc.length+1);bc.push(v&0xFF,(v>>8)&0xFF)}
+    else if(['JMP','JZ','JNZ','CALL','JE','JNE'].includes(mn)){bc.push(op,parseInt(parts[1]?parts[1].slice(1):'0')||0);const lo=parts[2]||parts[1];const v=isNaN(parseInt(lo))?resolveValue(lo,bc.length+2):parseInt(lo);bc.push(v&0xFF,(v>>8)&0xFF)}
+    else if(mn==='RET'){bc.push(op,0,0)}
+  }
+  return new Uint8Array(bc);
+}
+
+function disassemble(bytecode){
+  const lines=[];let pc=0;const bc=bytecode instanceof Uint8Array?bytecode:new Uint8Array(bytecode);
+  while(pc<bc.length){
+    const addr=pc,startPC=pc;const op=bc[pc++];const mn=MNEMONIC[op]||'??? (0x'+op.toString(16).padStart(2,'0')+')';let text;
+    if([0x80,0x00,0x22,0x81].includes(op))text=mn;
+    else if([0x0E,0x0F,0x20,0x21,0x0D,0x13].includes(op))text=mn+' R'+bc[pc++];
+    else if([0x01,0x02,0x03,0x2D].includes(op))text=mn+' R'+bc[pc++]+', R'+bc[pc++];
+    else if([0x08,0x09,0x0A,0x0B,0x0C,0x10,0x11,0x12,0x14,0x15].includes(op))text=mn+' R'+bc[pc++]+', R'+bc[pc++]+', R'+bc[pc++];
+    else if([0x2B,0x04,0x05,0x06,0x07,0x2E,0x2F].includes(op)){const rd=bc[pc++];const val=bc[pc]|(bc[pc+1]<<8)|(bc[pc+1]>=128?-65536:0);pc+=2;text=mn+' R'+rd+', '+val}
+    else if(op===0x28){pc+=2;text=mn}
+    else text=mn;
+    lines.push({addr:startPC,endPC:pc,text});
+  }
+  return lines;
+}
+
+// ═══ Example Programs ═══
+const EXAMPLES={
+  'hello.flx':'// FLUX Hello World\n// Computes 42 and halts\n\nMOVI R0, 42\nHALT',
+  'factorial.flx':'// Factorial of 7 = 5040\n// R0=counter, R1=accumulator\n\nMOVI R0, 7\nMOVI R1, 1\nloop:\nIMUL R1, R1, R0\nDEC R0\nJNZ R0, -10\nHALT',
+  'fibonacci.flx':'// Fibonacci F(15) = 610\n// R0=current, R1=next\n\nMOVI R0, 0\nMOVI R1, 1\nMOVI R2, 15\nloop:\nMOV R3, R1\nIADD R1, R1, R0\nMOV R0, R3\nDEC R2\nJNZ R2, -16\nHALT',
+  'sum.flx':'// Sum 1 to 100 = 5050\n// R0=sum, R1=counter\n\nMOVI R0, 0\nMOVI R1, 100\nloop:\nIADD R0, R0, R1\nDEC R1\nJNZ R1, -10\nHALT',
+  'power.flx':'// Power: 2^10 = 1024\n\nMOVI R0, 1\nMOVI R1, 2\nMOVI R2, 10\nloop:\nIMUL R0, R0, R1\nDEC R2\nJNZ R2, -10\nHALT',
+  'stack.flx':'// Stack operations demo\n// Push, swap via stack, add\n\nMOVI R0, 10\nMOVI R1, 20\nPUSH R0\nPUSH R1\nPOP R2\nPOP R3\nIADD R4, R2, R3\nHALT',
+  'bitops.flx':'// Bitwise operations\n\nMOVI R0, 255\nMOVI R1, 15\nIAND R2, R0, R1\nIOR  R3, R0, R1\nIXOR R4, R0, R1\nISHL R5, R1, 2\nHALT',
+  'collatz.flx':'// Collatz conjecture for N=27\n// Counts steps to reach 1\n// R0=n, R1=steps, R2=temp\n\nMOVI R0, 27\nMOVI R1, 0\ncheck:\nCMP R0, 1\nJE R0, done\n// n even? n%2==0\nMOV R2, R0\nIMOD R2, R2, R1\nCMP R2, 0\nJE R0, even\n// odd: n = 3*n+1\nMOVI R3, 3\nIMUL R0, R0, R3\nINC R0\nINC R1\nJMP R0, check\neven:\nMOVI R3, 2\nIDIV R0, R0, R3\nINC R1\nJMP R0, check\ndone:\nHALT'
+};
+
+// ═══ Playground State ═══
+let vm=null, bytecode=null, running=false, runTimer=null, currentExample='hello.flx';
+let prevRegs=new Int32Array(16);
+
+const $=id=>document.getElementById(id);
+const editor=$('editor'),lineNums=$('lineNums'),editorLabel=$('editorLabel'),editorDot=$('editorDot');
+const regGrid=$('regGrid'),disasmView=$('disasmView'),stackView=$('stackView'),consoleEl=$('console');
+const btnRun=$('btnRun'),btnStep=$('btnStep'),btnReset=$('btnReset');
+const speedSlider=$('speedSlider'),delayLabel=$('delayLabel'),statusInfo=$('statusInfo');
+const statPC=$('statPC'),statCycles=$('statCycles'),statState=$('statState'),statFlags=$('statFlags');
+const examplesBar=$('examplesBar');
+
+// ═══ Init Examples Bar ═══
+for(const[name,code]of Object.entries(EXAMPLES)){
+  const btn=document.createElement('button');btn.className='ex-btn';btn.textContent=name;
+  btn.onclick=()=>loadExample(name);
+  if(name==='hello.flx')btn.classList.add('active');
+  examplesBar.appendChild(btn);
+}
+
+function loadExample(name){
+  currentExample=name;
+  editor.value=EXAMPLES[name];
+  editorLabel.textContent=name;
+  [...examplesBar.children].forEach(b=>b.classList.toggle('active',b.textContent===name));
+  updateLineNums();resetVM();
+}
+
+// ═══ Line Numbers ═══
+function updateLineNums(){
+  const lines=editor.value.split('\n').length;
+  lineNums.textContent=Array.from({length:lines},(_,i)=>i+1).join('\n');
+}
+editor.addEventListener('input',()=>{updateLineNums();editorDot.classList.add('dirty')});
+editor.addEventListener('scroll',()=>{lineNums.scrollTop=editor.scrollTop});
+editor.addEventListener('keydown',e=>{
+  if(e.key==='Tab'){e.preventDefault();const s=editor.selectionStart,en=editor.selectionEnd;editor.value=editor.value.substring(0,s)+'  '+editor.value.substring(en);editor.selectionStart=editor.selectionEnd=s+2;}
+});
+
+// ═══ Tab Switching ═══
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    $('pane-'+tab.dataset.tab).classList.add('active');
+  };
+});
+
+// ═══ Speed Slider ═══
+speedSlider.oninput=()=>{delayLabel.textContent=speedSlider.value+'ms'};
+
+// ═══ Register Grid ═══
+function buildRegGrid(){
+  regGrid.innerHTML='';
+  for(let i=0;i<16;i++){
+    const cell=document.createElement('div');cell.className='reg-cell';cell.id='reg-'+i;
+    cell.innerHTML='<span class="rn">R'+i+'</span><span class="rv">0</span>';
+    regGrid.appendChild(cell);
+  }
+}
+buildRegGrid();
+
+// ═══ Console ═══
+function consoleLog(msg,cls){
+  const div=document.createElement('div');div.className='cl '+(cls||'cl-out');div.textContent=msg;
+  consoleEl.appendChild(div);consoleEl.scrollTop=consoleEl.scrollHeight;
+}
+function consoleClear(){consoleEl.innerHTML=''}
+
+// ═══ VM Reset ═══
+function resetVM(){
+  if(runTimer){clearTimeout(runTimer);runTimer=null}
+  running=false;
+  editorDot.classList.remove('error');
+  try{
+    bytecode=assemble(editor.value);
+    vm=new FluxVM(bytecode);
+    editorDot.classList.remove('dirty');
+    consoleClear();
+    consoleLog('Assembled '+bytecode.length+' bytes','cl-info');
+    consoleLog('Ready to execute','cl-info');
+    updateUI();updateDisasm();
+  }catch(e){
+    editorDot.classList.add('error');
+    bytecode=null;vm=null;
+    consoleClear();consoleLog('Assembly error: '+e.message,'cl-err');
+    statusInfo.textContent='Error: '+e.message;
+    updateUI();updateDisasm();
+  }
+}
+
+// ═══ UI Updates ═══
+function updateUI(){
+  if(!vm){
+    statPC.textContent='—';statCycles.textContent='—';statState.textContent='—';statFlags.textContent='—';
+    [...document.querySelectorAll('.reg-cell')].forEach(c=>{c.classList.remove('nz','chg');c.querySelector('.rv').textContent='0'});
+    return;
+  }
+  statPC.textContent=vm.pc;
+  statCycles.textContent=vm.cycles;
+  let state='running';
+  if(vm.halted)state='halted';
+  if(vm.error)state='error: '+vm.error;
+  if(!running&&!vm.halted&&!vm.error)state='idle';
+  statState.textContent=state;
+  statFlags.textContent='Z='+(vm._flagZero?1:0)+' S='+(vm._flagSign?1:0);
+
+  for(let i=0;i<16;i++){
+    const cell=$('reg-'+i);const val=vm.gp[i];
+    const valEl=cell.querySelector('.rv');
+    valEl.textContent=val;
+    cell.classList.toggle('nz',val!==0);
+    cell.classList.toggle('chg',val!==prevRegs[i]&&vm.cycles>0);
+    prevRegs[i]=val;
+  }
+
+  // Stack
+  if(vm.stack.length===0){
+    stackView.innerHTML='<div class="stack-empty">Stack is empty</div>';
+  }else{
+    let html='';
+    for(let i=vm.stack.length-1;i>=0;i--){
+      html+='<div class="data-row"><span class="addr">SP['+i+']</span><span class="val">'+vm.stack[i]+'</span></div>';
+    }
+    stackView.innerHTML=html;
+  }
+
+  // Status info
+  if(vm.halted){
+    statusInfo.textContent='Halted after '+vm.cycles+' cycles';
+    btnRun.disabled=true;btnStep.disabled=true;
+  }else if(vm.error){
+    statusInfo.textContent='Error: '+vm.error;
+    btnRun.disabled=true;btnStep.disabled=true;
+  }else{
+    btnRun.disabled=false;btnStep.disabled=false;
+    if(!running)statusInfo.textContent='PC='+vm.pc+' · '+vm.cycles+' cycles';
+  }
+
+  updateDisasm();
+}
+
+function updateDisasm(){
+  if(!bytecode){disasmView.innerHTML='<div class="stack-empty">No bytecode</div>';return}
+  const lines=disassemble(bytecode);
+  let html='';
+  for(const line of lines){
+    const isCur=vm&&line.addr===vm.pc;
+    html+='<div class="disasm-line'+(isCur?' cur':'')+'"><span class="pa">'+line.addr.toString(16).padStart(4,'0')+'</span><span class="pi">'+line.text+'</span></div>';
+  }
+  disasmView.innerHTML=html;
+}
+
+// ═══ Run ═══
+function doRun(){
+  if(!vm||vm.halted)resetVM();
+  if(!vm)return;
+  running=true;btnRun.disabled=true;btnStep.disabled=true;
+  const delay=parseInt(speedSlider.value);
+  consoleLog('Running...','cl-info');
+
+  function tick(){
+    if(!vm||vm.halted||vm.error){
+      finishRun();return;
+    }
+    try{
+      vm.step();
+      updateUI();
+      if(!vm.halted&&!vm.error&&running){
+        if(delay>0)runTimer=setTimeout(tick,delay);
+        else tick();
+      }else{
+        finishRun();
+      }
+    }catch(e){
+      vm.error=e.message;finishRun();
+    }
+  }
+  tick();
+}
+
+function finishRun(){
+  running=false;btnRun.disabled=false;btnStep.disabled=false;
+  if(vm){
+    if(vm.error){
+      consoleLog('Runtime error: '+vm.error,'cl-err');
+      editorDot.classList.add('error');
+    }else if(vm.halted){
+      // Find result in R0
+      consoleLog('Program halted','cl-ok');
+      consoleLog('Result: R0 = '+vm.reg(0),'cl-ok');
+      // Show all non-zero registers
+      const nz=[];
+      for(let i=0;i<16;i++)if(vm.gp[i]!==0)nz.push('R'+i+'='+vm.gp[i]);
+      if(nz.length)consoleLog('Registers: '+nz.join('  '),'cl-out');
+      consoleLog('Total cycles: '+vm.cycles,'cl-info');
+    }
+    updateUI();
+  }
+}
+
+// ═══ Step ═══
+function doStep(){
+  if(!vm||vm.halted||vm.error){resetVM();if(!vm)return}
+  try{
+    const more=vm.step();
+    consoleLog('Step: PC='+vm.pc+' cycle='+vm.cycles,'cl-info');
+    updateUI();
+    if(!more){
+      if(vm.halted)consoleLog('HALT reached','cl-ok');
+      else if(vm.error)consoleLog('Error: '+vm.error,'cl-err');
+      btnRun.disabled=true;btnStep.disabled=true;
+    }
+  }catch(e){
+    vm.error=e.message;consoleLog('Runtime error: '+e.message,'cl-err');
+    editorDot.classList.add('error');updateUI();
+  }
+}
+
+// ═══ Button Handlers ═══
+btnRun.onclick=doRun;
+btnStep.onclick=doStep;
+btnReset.onclick=()=>{consoleClear();resetVM();consoleLog('VM reset','cl-info')};
+
+// ═══ Keyboard Shortcuts ═══
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey){
+    if(e.key==='Enter'){e.preventDefault();if(running){running=false;clearTimeout(runTimer);finishRun()}else doRun();}
+    if(e.key==='.'){e.preventDefault();doStep()}
+    if(e.key==='r'){e.preventDefault();btnReset.click()}
+  }
+});
+
+// ═══ Boot ═══
+loadExample('hello.flx');
+consoleLog('⚡ FLUX Playground ready','cl-ok');
+consoleLog('Ctrl+Enter = Run · Ctrl+. = Step · Ctrl+R = Reset','cl-info');
+</script>
+</body>
+</html>
