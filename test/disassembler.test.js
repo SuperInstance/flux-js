@@ -1,6 +1,7 @@
 /**
  * Disassembler Tests — flux-js
  * Tests for disassemble() function: bytecode → human-readable text.
+ * Updated for cross-compatible opcodes.
  */
 import { describe, it, expect } from 'vitest';
 import { disassemble, assemble, OP } from '../flux.js';
@@ -75,15 +76,15 @@ describe('disassemble', () => {
     expect(lines[0]).toMatch(/R3/);
   });
 
-  it('disassembles PUSH', () => {
-    const lines = disassemble(new Uint8Array([0x10, 0]));
+  it('disassembles PUSH (0x20)', () => {
+    const lines = disassemble(new Uint8Array([0x20, 0]));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/PUSH/);
     expect(lines[0]).toMatch(/R0/);
   });
 
-  it('disassembles POP', () => {
-    const lines = disassemble(new Uint8Array([0x11, 1]));
+  it('disassembles POP (0x21)', () => {
+    const lines = disassemble(new Uint8Array([0x21, 1]));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/POP/);
     expect(lines[0]).toMatch(/R1/);
@@ -95,8 +96,8 @@ describe('disassemble', () => {
     expect(lines[0]).toMatch(/CMP/);
   });
 
-  it('disassembles JMP with offset', () => {
-    const lines = disassemble(new Uint8Array([0x07, 0x08, 0x00]));
+  it('disassembles JMP with offset (Format D: 4 bytes)', () => {
+    const lines = disassemble(new Uint8Array([0x04, 0x00, 0x08, 0x00]));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/JMP/);
   });
@@ -108,11 +109,23 @@ describe('disassemble', () => {
     expect(lines[0]).toMatch(/R0/);
   });
 
-  it('disassembles JZ with register and offset', () => {
-    const lines = disassemble(new Uint8Array([0x2E, 1, 0x04, 0x00]));
+  it('disassembles JZ (0x05) with register and offset', () => {
+    const lines = disassemble(new Uint8Array([0x05, 1, 0x04, 0x00]));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/JZ/);
     expect(lines[0]).toMatch(/R1/);
+  });
+
+  it('disassembles IAND (0x10)', () => {
+    const lines = disassemble(new Uint8Array([0x10, 0, 1, 2]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/IAND/);
+  });
+
+  it('disassembles IOR (0x11)', () => {
+    const lines = disassemble(new Uint8Array([0x11, 0, 1, 2]));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/IOR/);
   });
 
   it('shows hex address prefixes', () => {

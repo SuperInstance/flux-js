@@ -17,13 +17,18 @@
 // ─── Opcodes ──────────────────────────────────────────────────────────────
 
 const OP = {
-  NOP:0x00, MOV:0x01, JMP:0x07,
+  NOP:0x00, MOV:0x01, LOAD:0x02, STORE:0x03,
+  JMP:0x04, JZ:0x05, JNZ:0x06, CALL:0x07,
   IADD:0x08, ISUB:0x09, IMUL:0x0A, IDIV:0x0B,
-  INC:0x0E, DEC:0x0F,
-  PUSH:0x10, POP:0x11,
-  JNZ:0x06, JZ:0x2E,
-  MOVI:0x2B, CMP:0x2D,
-  HALT:0x80
+  IMOD:0x0C, INEG:0x0D, INC:0x0E, DEC:0x0F,
+  IAND:0x10, IOR:0x11, IXOR:0x12, INOT:0x13,
+  ISHL:0x14, ISHR:0x15,
+  PUSH:0x20, POP:0x21, DUP:0x22,
+  RET:0x28, MOVI:0x2B, CMP:0x2D,
+  JE:0x2E, JNE:0x2F,
+  FADD:0x40, FSUB:0x41, FMUL:0x42, FDIV:0x43,
+  TELL:0x60, ASK:0x61, DELEGATE:0x62, BROADCAST:0x66,
+  HALT:0x80, YIELD:0x81
 };
 
 const MNEMONIC = Object.fromEntries(Object.entries(OP).map(([k,v])=>[v,k]));
@@ -45,6 +50,8 @@ class FluxVM {
     this.bc = bytecode instanceof Uint8Array ? bytecode : new Uint8Array(bytecode);
     this.maxCycles = maxCycles;
     this.error = null;
+    this._flagZero = false;
+    this._flagSign = false;
   }
 
   /** Read register */
@@ -76,23 +83,42 @@ class FluxVM {
         switch (op) {
           case 0x80: this.halted = true; break;
           case 0x00: break; // NOP
-          case 0x01: { const d=this._u8(),s=this._u8(); this.gp[d]=this.gp[s]; break; }
-          case 0x2B: { const d=this._u8(); this.gp[d]=this._i16(); break; }
-          case 0x08: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]+this.gp[b]; break; }
-          case 0x09: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]-this.gp[b]; break; }
-          case 0x0A: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]*this.gp[b]; break; }
+          case 0x01: { const d=this._u8(),s=this._u8(); this.gp[d]=this.gp[s]; break; } // MOV
+          case 0x2B: { const d=this._u8(); this.gp[d]=this._i16(); break; } // MOVI
+          // 3-operand arithmetic: [op][rd][rs1][rs2]
+          case 0x08: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=(this.gp[a]+this.gp[b])|0; break; } // IADD
+          case 0x09: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=(this.gp[a]-this.gp[b])|0; break; } // ISUB
+          case 0x0A: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=(this.gp[a]*this.gp[b])|0; break; } // IMUL
           case 0x0B: { const d=this._u8(),a=this._u8(),b=this._u8();
             if(this.gp[b]===0) throw new Error('Division by zero');
-            this.gp[d]=(this.gp[a]/this.gp[b])|0; break; }
-          case 0x0E: this.gp[this._u8()]++; break;
-          case 0x0F: this.gp[this._u8()]--; break;
-          case 0x10: this.stack.push(this.gp[this._u8()]); break;
-          case 0x11: this.gp[this._u8()]=this.stack.pop(); break;
-          case 0x06: { const d=this._u8(),off=this._i16(); if(this.gp[d]!==0) this.pc+=off; break; }
-          case 0x2E: { const d=this._u8(),off=this._i16(); if(this.gp[d]===0) this.pc+=off; break; }
-          case 0x07: { const off=this._i16(); this.pc+=off; break; }
+            this.gp[d]=(this.gp[a]/this.gp[b])|0; break; } // IDIV
+          case 0x0C: { const d=this._u8(),a=this._u8(),b=this._u8();
+            if(this.gp[b]===0) throw new Error('Modulo by zero');
+            this.gp[d]=(this.gp[a]%this.gp[b])|0; break; } // IMOD
+          case 0x0E: { const r=this._u8(); this.gp[r]=(this.gp[r]+1)|0; break; } // INC
+          case 0x0F: { const r=this._u8(); this.gp[r]=(this.gp[r]-1)|0; break; } // DEC
+          // FIX: PUSH/POP now use 0x20/0x21 (was 0x10/0x11)
+          case 0x20: this.stack.push(this.gp[this._u8()]); break; // PUSH
+          case 0x21: this.gp[this._u8()]=this.stack.pop()||0; break; // POP
+          case 0x22: { if(this.stack.length>0){ const v=this.stack[this.stack.length-1]; this.stack.push(v);} break; } // DUP
+          case 0x04: { const _r=this._u8(),off=this._i16(); this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JMP
+          case 0x05: { const r=this._u8(),off=this._i16(); if(this.gp[r]===0) this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JZ
+          case 0x06: { const r=this._u8(),off=this._i16(); if(this.gp[r]!==0) this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JNZ
+          case 0x07: { const _r=this._u8(),off=this._i16(); this.stack.push(this.pc); this.pc=(this.pc+off)&0xFFFFFFFF; break; } // CALL
+          case 0x28: { const _r=this._u8(),_p=this._u8(); if(this.stack.length>0){ this.pc=this.stack.pop(); } break; } // RET
           case 0x2D: { const a=this._u8(),b=this._u8();
-            this.gp[13]=this.gp[a]>this.gp[b]?1:this.gp[a]<this.gp[b]?-1:0; break; }
+            this._flagZero = this.gp[a]===this.gp[b];
+            this._flagSign = this.gp[a]<this.gp[b];
+            break; } // CMP
+          case 0x2E: { const _r=this._u8(),off=this._i16(); if(this._flagZero) this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JE
+          case 0x2F: { const _r=this._u8(),off=this._i16(); if(!this._flagZero) this.pc=(this.pc+off)&0xFFFFFFFF; break; } // JNE
+          case 0x10: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]&this.gp[b]; break; } // IAND
+          case 0x11: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]|this.gp[b]; break; } // IOR
+          case 0x12: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]^this.gp[b]; break; } // IXOR
+          case 0x13: { const d=this._u8(),s=this._u8(); this.gp[d]=~this.gp[s]; break; } // INOT
+          case 0x14: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]<<(this.gp[b]&0x1f); break; } // ISHL
+          case 0x15: { const d=this._u8(),a=this._u8(),b=this._u8(); this.gp[d]=this.gp[a]>>(this.gp[b]&0x1f); break; } // ISHR
+          case 0x81: break; // YIELD
           default: throw new Error(`Unknown opcode: 0x${op.toString(16).padStart(2,'0')}`);
         }
       }
@@ -137,12 +163,12 @@ function assemble(text) {
     
     // Size calculation
     if (mn in OP) {
-      if (['HALT','NOP'].includes(mn)) pc += 1;
-      else if (['INC','DEC','PUSH','POP'].includes(mn)) pc += 2;
-      else if (mn === 'MOV') pc += 3;
-      else if (['IADD','ISUB','IMUL','IDIV','CMP'].includes(mn)) pc += 4;
-      else if (['MOVI','JNZ','JZ'].includes(mn)) pc += 4;
-      else if (mn === 'JMP') pc += 3;
+      if (['HALT','NOP','DUP','YIELD'].includes(mn)) pc += 1;
+      else if (['INC','DEC','PUSH','POP','INEG','INOT'].includes(mn)) pc += 2;
+      else if (['MOV','LOAD','STORE','CMP'].includes(mn)) pc += 3;
+      else if (['IADD','ISUB','IMUL','IDIV','IMOD','IAND','IOR','IXOR','ISHL','ISHR'].includes(mn)) pc += 4;
+      else if (['MOVI','JMP','JZ','JNZ','CALL','JE','JNE'].includes(mn)) pc += 4;
+      else if (mn === 'RET') pc += 3;
     }
   }
 
@@ -161,27 +187,26 @@ function assemble(text) {
     if (!(mn in OP)) continue;
     const op = OP[mn];
 
-    if (['HALT','NOP'].includes(mn)) {
+    if (['HALT','NOP','DUP','YIELD'].includes(mn)) {
       bc.push(op);
     } else if (['INC','DEC','PUSH','POP'].includes(mn)) {
       bc.push(op, parseInt(parts[1].slice(1)));
-    } else if (mn === 'MOV') {
+    } else if (['MOV','LOAD','STORE','CMP'].includes(mn)) {
       bc.push(op, parseInt(parts[1].slice(1)), parseInt(parts[2].slice(1)));
-    } else if (['IADD','ISUB','IMUL','IDIV','CMP'].includes(mn)) {
+    } else if (['IADD','ISUB','IMUL','IDIV','IMOD','IAND','IOR','IXOR','ISHL','ISHR'].includes(mn)) {
       bc.push(op, parseInt(parts[1].slice(1)), parseInt(parts[2].slice(1)),
-              parts.length > 3 ? parseInt(parts[3].slice(1)) : parseInt(parts[2].slice(1)));
+              parts.length > 3 ? parseInt(parts[3].slice(1)) : parseInt(parts[1].slice(1)));
     } else if (mn === 'MOVI') {
       bc.push(op, parseInt(parts[1].slice(1)));
       const v = resolveValue(parts[2], bc.length + 1);
       bc.push(v & 0xFF, (v >> 8) & 0xFF);
-    } else if (['JNZ','JZ'].includes(mn)) {
-      bc.push(op, parseInt(parts[1].slice(1)));
-      const v = resolveValue(parts[2], bc.length + 2);
+    } else if (['JMP','JZ','JNZ','CALL','JE','JNE'].includes(mn)) {
+      bc.push(op, parseInt(parts[1] ? parts[1].slice(1) : '0') || 0);
+      const labelOrOff = parts[2] || parts[1];
+      const v = isNaN(parseInt(labelOrOff)) ? resolveValue(labelOrOff, bc.length + 2) : parseInt(labelOrOff);
       bc.push(v & 0xFF, (v >> 8) & 0xFF);
-    } else if (mn === 'JMP') {
-      bc.push(op);
-      const v = resolveValue(parts[1], bc.length + 2);
-      bc.push(v & 0xFF, (v >> 8) & 0xFF);
+    } else if (mn === 'RET') {
+      bc.push(op, 0, 0);
     }
   }
 
@@ -205,23 +230,22 @@ function disassemble(bytecode) {
     const op = bc[pc++];
     const mn = MNEMONIC[op] || `??? (0x${op.toString(16).padStart(2,'0')})`;
 
-    if ([0x80, 0x00].includes(op)) {
+    if ([0x80, 0x00, 0x22, 0x81].includes(op)) {
       lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn}`);
-    } else if ([0x0E, 0x0F, 0x10, 0x11].includes(op)) {
+    } else if ([0x0E, 0x0F, 0x20, 0x21].includes(op)) {
       lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn} R${bc[pc++]}`);
-    } else if (op === 0x01) {
+    } else if ([0x01, 0x02, 0x03, 0x2D].includes(op)) {
       lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn} R${bc[pc++]}, R${bc[pc++]}`);
-    } else if ([0x08, 0x09, 0x0A, 0x0B, 0x2D].includes(op)) {
+    } else if ([0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x10, 0x11, 0x12, 0x14, 0x15].includes(op)) {
       lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn} R${bc[pc++]}, R${bc[pc++]}, R${bc[pc++]}`);
-    } else if ([0x2B, 0x06, 0x2E].includes(op)) {
+    } else if ([0x2B, 0x04, 0x05, 0x06, 0x07, 0x2E, 0x2F].includes(op)) {
       const rd = bc[pc++];
       const val = bc[pc] | (bc[pc+1] << 8) | (bc[pc+1] >= 128 ? -65536 : 0);
       pc += 2;
       lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn} R${rd}, ${val}`);
-    } else if (op === 0x07) {
-      const val = bc[pc] | (bc[pc+1] << 8) | (bc[pc+1] >= 128 ? -65536 : 0);
-      pc += 2;
-      lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn} ${val}`);
+    } else if (op === 0x28) {
+      pc += 2; // RET has 2 padding bytes
+      lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn}`);
     } else {
       lines.push(`${addr.toString(16).padStart(4,'0')}: ${mn}`);
     }

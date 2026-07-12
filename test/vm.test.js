@@ -1,6 +1,7 @@
 /**
  * VM Core Tests — flux-js
  * Tests for FluxVM execution engine: opcodes, registers, stack, jumps, errors.
+ * Updated for cross-compatible opcodes (Python/Rust/JS alignment).
  */
 import { describe, it, expect } from 'vitest';
 import { FluxVM, OP } from '../flux.js';
@@ -263,13 +264,13 @@ describe('FluxVM', () => {
     });
   });
 
-  describe('PUSH (0x10) and POP (0x11)', () => {
+  describe('PUSH (0x20) and POP (0x21)', () => {
     it('pushes and pops a value', () => {
       const vm = new FluxVM(bc(
         0x2B, 0, ...i16(99),  // MOVI R0, 99
-        0x10, 0,              // PUSH R0
+        0x20, 0,              // PUSH R0 (0x20, not 0x10)
         0x2B, 0, ...i16(0),   // MOVI R0, 0
-        0x11, 0,              // POP R0
+        0x21, 0,              // POP R0 (0x21, not 0x11)
         0x80
       ));
       vm.execute();
@@ -280,10 +281,10 @@ describe('FluxVM', () => {
       const vm = new FluxVM(bc(
         0x2B, 0, ...i16(10),
         0x2B, 1, ...i16(20),
-        0x10, 0,  // PUSH R0 (10)
-        0x10, 1,  // PUSH R1 (20)
-        0x11, 0,  // POP R0 → 20
-        0x11, 1,  // POP R1 → 10
+        0x20, 0,  // PUSH R0 (10)
+        0x20, 1,  // PUSH R1 (20)
+        0x21, 0,  // POP R0 → 20
+        0x21, 1,  // POP R1 → 10
         0x80
       ));
       vm.execute();
@@ -293,7 +294,7 @@ describe('FluxVM', () => {
 
     it('stores 0 on pop from empty stack (undefined coerced to 0)', () => {
       const vm = new FluxVM(bc(
-        0x11, 0,  // POP R0 (stack empty)
+        0x21, 0,  // POP R0 (stack empty)
         0x80
       ));
       vm.execute();
@@ -303,29 +304,7 @@ describe('FluxVM', () => {
   });
 
   describe('CMP (0x2D)', () => {
-    it('sets R13=1 when a > b', () => {
-      const vm = new FluxVM(bc(
-        0x2B, 0, ...i16(10),
-        0x2B, 1, ...i16(5),
-        0x2D, 0, 1,  // CMP R0, R1
-        0x80
-      ));
-      vm.execute();
-      expect(vm.reg(13)).toBe(1);
-    });
-
-    it('sets R13=-1 when a < b', () => {
-      const vm = new FluxVM(bc(
-        0x2B, 0, ...i16(3),
-        0x2B, 1, ...i16(8),
-        0x2D, 0, 1,  // CMP R0, R1
-        0x80
-      ));
-      vm.execute();
-      expect(vm.reg(13)).toBe(-1);
-    });
-
-    it('sets R13=0 when a == b', () => {
+    it('sets flagZero=true when a == b', () => {
       const vm = new FluxVM(bc(
         0x2B, 0, ...i16(42),
         0x2B, 1, ...i16(42),
@@ -333,13 +312,38 @@ describe('FluxVM', () => {
         0x80
       ));
       vm.execute();
-      expect(vm.reg(13)).toBe(0);
+      expect(vm._flagZero).toBe(true);
+      expect(vm._flagSign).toBe(false);
+    });
+
+    it('sets flagSign=true when a < b', () => {
+      const vm = new FluxVM(bc(
+        0x2B, 0, ...i16(3),
+        0x2B, 1, ...i16(8),
+        0x2D, 0, 1,  // CMP R0, R1
+        0x80
+      ));
+      vm.execute();
+      expect(vm._flagZero).toBe(false);
+      expect(vm._flagSign).toBe(true);
+    });
+
+    it('sets neither flag when a > b', () => {
+      const vm = new FluxVM(bc(
+        0x2B, 0, ...i16(10),
+        0x2B, 1, ...i16(5),
+        0x2D, 0, 1,  // CMP R0, R1
+        0x80
+      ));
+      vm.execute();
+      expect(vm._flagZero).toBe(false);
+      expect(vm._flagSign).toBe(false);
     });
   });
 
   describe('JNZ (0x06)', () => {
     it('jumps when register is non-zero', () => {
-      // MOVI R0, 1; JNZ R0, 4 (skip next 4 bytes); MOVI R1, 99; HALT
+      // MOVI R0, 1; JNZ R0, 4 (skip MOVI R1, 99); HALT
       const vm = new FluxVM(bc(
         0x2B, 0, ...i16(1),    // MOVI R0, 1 (4 bytes, pc 0-3)
         0x06, 0, ...i16(4),    // JNZ R0, 4 (4 bytes, pc 4-7) → jump to pc=12
@@ -364,12 +368,12 @@ describe('FluxVM', () => {
     });
   });
 
-  describe('JZ (0x2E)', () => {
+  describe('JZ (0x05)', () => {
     it('jumps when register is zero', () => {
       const vm = new FluxVM(bc(
-        0x2E, 0, ...i16(4),    // JZ R0, 4 (jump, R0=0)
-        0x2B, 1, ...i16(99),   // MOVI R1, 99 (skipped)
-        0x80
+        0x05, 0, ...i16(5),    // JZ R0, 5 (jump, R0=0) → pc=9
+        0x2B, 1, ...i16(99),   // MOVI R1, 99 (4 bytes, pc 4-7, skipped)
+        0x80                    // HALT (1 byte, pc 8... actually 9)
       ));
       vm.execute();
       expect(vm.reg(1)).toBe(0);
@@ -378,7 +382,7 @@ describe('FluxVM', () => {
     it('falls through when register is non-zero', () => {
       const vm = new FluxVM(bc(
         0x2B, 0, ...i16(1),    // MOVI R0, 1
-        0x2E, 0, ...i16(4),    // JZ R0, 4 (no jump, R0=1)
+        0x05, 0, ...i16(5),    // JZ R0, 5 (no jump, R0=1)
         0x2B, 1, ...i16(99),   // MOVI R1, 99 (should execute)
         0x80
       ));
@@ -387,16 +391,76 @@ describe('FluxVM', () => {
     });
   });
 
-  describe('JMP (0x07)', () => {
-    it('jumps unconditionally', () => {
-      // JMP 4 → skip MOVI R1, 99 → land on HALT
+  describe('JE (0x2E) and JNE (0x2F)', () => {
+    it('JE jumps when flagZero is set', () => {
       const vm = new FluxVM(bc(
-        0x07, ...i16(4),       // JMP 4 (3 bytes, pc 0-2)
-        0x2B, 1, ...i16(99),   // MOVI R1, 99 (4 bytes, pc 3-6, skipped)
-        0x80                    // HALT (1 byte, pc 7)
+        0x2B, 0, ...i16(5),
+        0x2B, 1, ...i16(5),
+        0x2D, 0, 1,         // CMP R0, R1 → flagZero=true
+        0x2E, 0, ...i16(5), // JE R0, 5 (jump)
+        0x2B, 2, ...i16(99),// MOVI R2, 99 (skipped)
+        0x80
+      ));
+      vm.execute();
+      expect(vm.reg(2)).toBe(0);
+    });
+
+    it('JNE jumps when flagZero is NOT set', () => {
+      const vm = new FluxVM(bc(
+        0x2B, 0, ...i16(5),
+        0x2B, 1, ...i16(6),
+        0x2D, 0, 1,         // CMP R0, R1 → flagZero=false
+        0x2F, 0, ...i16(5), // JNE R0, 5 (jump)
+        0x2B, 2, ...i16(99),// MOVI R2, 99 (skipped)
+        0x80
+      ));
+      vm.execute();
+      expect(vm.reg(2)).toBe(0);
+    });
+  });
+
+  describe('JMP (0x04)', () => {
+    it('jumps unconditionally (Format D: opcode + reg + i16 offset)', () => {
+      // JMP is now Format D: [0x04][reg:u8][off:i16] = 4 bytes
+      const vm = new FluxVM(bc(
+        0x04, 0, ...i16(5),    // JMP R0, 5 (4 bytes, pc 0-3) → pc=8
+        0x2B, 1, ...i16(99),   // MOVI R1, 99 (4 bytes, pc 4-7, skipped)
+        0x80                    // HALT (1 byte, pc 8)
       ));
       vm.execute();
       expect(vm.reg(1)).toBe(0); // MOVI R1, 99 skipped
+    });
+  });
+
+  describe('bitwise ops', () => {
+    it('IAND, IOR, IXOR work correctly', () => {
+      const vm = new FluxVM(bc(
+        0x2B, 0, ...i16(0b1100),
+        0x2B, 1, ...i16(0b1010),
+        0x10, 2, 0, 1,  // IAND R2, R0, R1 → 0b1000 = 8
+        0x11, 3, 0, 1,  // IOR  R3, R0, R1 → 0b1110 = 14
+        0x12, 4, 0, 1,  // IXOR R4, R0, R1 → 0b0110 = 6
+        0x80
+      ));
+      vm.execute();
+      expect(vm.reg(2)).toBe(8);
+      expect(vm.reg(3)).toBe(14);
+      expect(vm.reg(4)).toBe(6);
+    });
+
+    it('ISHL and ISHR work correctly', () => {
+      const vm = new FluxVM(bc(
+        0x2B, 0, ...i16(1),
+        0x2B, 1, ...i16(4),
+        0x14, 2, 0, 1,  // ISHL R2, R0, R1 → 1 << 4 = 16
+        0x2B, 3, ...i16(256),
+        0x2B, 4, ...i16(2),
+        0x15, 5, 3, 4,  // ISHR R5, R3, R4 → 256 >> 2 = 64
+        0x80
+      ));
+      vm.execute();
+      expect(vm.reg(2)).toBe(16);
+      expect(vm.reg(5)).toBe(64);
     });
   });
 
@@ -451,8 +515,10 @@ describe('FluxVM', () => {
     });
 
     it('stops on maxCycles exceeded', () => {
+      // JMP is now Format D (4 bytes): [0x04][reg][offset]
+      // Infinite loop: JMP R0, -4 → jumps back 4 bytes to itself
       const vm = new FluxVM(bc(
-        0x07, ...i16(-3),  // JMP -3 (infinite loop)
+        0x04, 0, ...i16(-4),  // JMP R0, -4 (infinite loop, 4 bytes)
       ), 100);
       vm.execute();
       expect(vm.halted).toBe(false);
@@ -499,6 +565,25 @@ describe('FluxVM', () => {
       for (let i = 0; i < 16; i++) {
         expect(vm.reg(i)).toBe(i + 1);
       }
+    });
+  });
+
+  describe('cross-compatibility', () => {
+    it('bytecode for factorial(5) matches Python/Rust format', () => {
+      // This is the same bytecode that Python and Rust produce:
+      // MOVI R0, 5; MOVI R1, 1; IMUL R1, R1, R0; DEC R0; JNZ R0, -10; HALT
+      const expected = [
+        0x2B, 0x00, 0x05, 0x00,  // MOVI R0, 5
+        0x2B, 0x01, 0x01, 0x00,  // MOVI R1, 1
+        0x0A, 0x01, 0x01, 0x00,  // IMUL R1, R1, R0
+        0x0F, 0x00,              // DEC R0
+        0x06, 0x00, 0xF6, 0xFF,  // JNZ R0, -10
+        0x80                     // HALT
+      ];
+      const vm = new FluxVM(new Uint8Array(expected));
+      vm.execute();
+      expect(vm.reg(1)).toBe(120);
+      expect(vm.halted).toBe(true);
     });
   });
 });

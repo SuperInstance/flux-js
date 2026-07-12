@@ -1,6 +1,7 @@
 /**
  * Assembler Tests — flux-js
  * Tests for assemble() function: encoding, label resolution, error handling.
+ * Updated for cross-compatible opcodes.
  */
 import { describe, it, expect } from 'vitest';
 import { assemble, OP, FluxVM } from '../flux.js';
@@ -68,30 +69,29 @@ describe('assemble', () => {
       expect(bc).toEqual(new Uint8Array([OP.DEC, 5]));
     });
 
-    it('encodes PUSH', () => {
+    it('encodes PUSH (0x20, not 0x10)', () => {
       const bc = assemble('PUSH R0');
       expect(bc).toEqual(new Uint8Array([OP.PUSH, 0]));
+      expect(bc[0]).toBe(0x20); // Cross-compat: PUSH = 0x20
     });
 
-    it('encodes POP', () => {
+    it('encodes POP (0x21, not 0x11)', () => {
       const bc = assemble('POP R1');
       expect(bc).toEqual(new Uint8Array([OP.POP, 1]));
+      expect(bc[0]).toBe(0x21); // Cross-compat: POP = 0x21
     });
 
-    it('encodes CMP (produces 4 bytes — assembler quirk)', () => {
+    it('encodes CMP (3-byte format: opcode + rd + rs)', () => {
       const bc = assemble('CMP R0, R1');
-      // Assembler treats CMP like 3-operand instructions, producing 4 bytes
-      // The extra byte is a duplicate of the 2nd operand register
-      expect(bc.length).toBe(4);
-      expect(bc[0]).toBe(OP.CMP);
-      expect(bc[1]).toBe(0);
-      expect(bc[2]).toBe(1);
+      expect(bc).toEqual(new Uint8Array([OP.CMP, 0, 1]));
+      expect(bc.length).toBe(3);
     });
 
-    it('encodes JMP with numeric offset', () => {
-      const bc = assemble('JMP 5');
-      expect(bc.length).toBe(3);
+    it('encodes JMP with numeric offset (Format D: 4 bytes)', () => {
+      const bc = assemble('JMP R0, 5');
+      expect(bc.length).toBe(4);
       expect(bc[0]).toBe(OP.JMP);
+      expect(bc[1]).toBe(0); // reg field
     });
 
     it('encodes JNZ with numeric offset', () => {
@@ -134,7 +134,7 @@ describe('assemble', () => {
 
   describe('label resolution', () => {
     it('resolves JMP to label correctly', () => {
-      const bc = assemble('JMP skip\nMOVI R0, 99\nskip:\nMOVI R1, 42\nHALT');
+      const bc = assemble('JMP R0, skip\nMOVI R0, 99\nskip:\nMOVI R1, 42\nHALT');
       const vm = new FluxVM(bc);
       vm.execute();
       expect(vm.reg(0)).toBe(0);  // MOVI R0, 99 was skipped
@@ -167,7 +167,7 @@ describe('assemble', () => {
 
   describe('error handling', () => {
     it('throws on unresolvable label', () => {
-      expect(() => assemble('JMP nonexistent')).toThrow('Cannot resolve: nonexistent');
+      expect(() => assemble('JMP R0, nonexistent')).toThrow('Cannot resolve: nonexistent');
     });
 
     it('skips unrecognized mnemonics silently', () => {
@@ -228,6 +228,22 @@ describe('assemble', () => {
       const bc = assemble('MoVi R0, 42\nHaLt');
       expect(bc[0]).toBe(OP.MOVI);
       expect(bc[bc.length - 1]).toBe(OP.HALT);
+    });
+  });
+
+  describe('cross-compatible bytecode', () => {
+    it('produces identical bytecode to Python/Rust for factorial(5)', () => {
+      const bc = assemble('MOVI R0, 5\nMOVI R1, 1\nIMUL R1, R1, R0\nDEC R0\nJNZ R0, -10\nHALT');
+      // Expected: exact bytes that Python flux-runtime and Rust fluxvm produce
+      const expected = new Uint8Array([
+        0x2B, 0x00, 0x05, 0x00,  // MOVI R0, 5
+        0x2B, 0x01, 0x01, 0x00,  // MOVI R1, 1
+        0x0A, 0x01, 0x01, 0x00,  // IMUL R1, R1, R0
+        0x0F, 0x00,              // DEC R0
+        0x06, 0x00, 0xF6, 0xFF,  // JNZ R0, -10
+        0x80                     // HALT
+      ]);
+      expect(bc).toEqual(expected);
     });
   });
 });
