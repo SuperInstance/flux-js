@@ -1,7 +1,7 @@
 {
-  "name": "flux-js",
+  "name": "@superinstance/flux-js",
   "version": "1.0.0",
-  "description": "FLUX.js — JavaScript Bytecode VM",
+  "description": "FLUX.js \u2014 JavaScript Bytecode VM",
   "main": "flux.js",
   "scripts": {
     "test": "vitest run",
@@ -9,5 +9,25 @@
   },
   "devDependencies": {
     "vitest": "^3.2.1"
-  }
+  },
+  "license": "MIT",
+  "keywords": [
+    "flux",
+    "bytecode",
+    "vm",
+    "quilt",
+    "superinstance"
+  ],
+  "author": "SuperInstance <superinstance@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuperInstance/flux-js.git"
+  },
+  "homepage": "https://github.com/SuperInstance/flux-js",
+  "files": [
+    "flux.js",
+    "README.md",
+    "LICENSE",
+    "docs/"
+  ]
 }
