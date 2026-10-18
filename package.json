@@ -1,6 +1,6 @@
 {
   "name": "@superinstance/flux-js",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "FLUX.js \u2014 JavaScript Bytecode VM",
   "main": "flux.js",
   "scripts": {
@@ -29,5 +29,8 @@
     "README.md",
     "LICENSE",
     "docs/"
-  ]
+  ],
+  "bugs": {
+    "url": "https://github.com/SuperInstance/flux-js/issues"
+  }
 }
